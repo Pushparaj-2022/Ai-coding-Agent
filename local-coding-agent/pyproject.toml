@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-coding-agent"
+version = "0.2.0"
+description = "Local-first coding agent for the terminal and VS Code, powered by local models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "pydantic>=2.6,<3",
+  "typer>=0.12,<1",
+  "httpx>=0.27,<1",
+  "langgraph>=1.0,<2",
+  "langgraph-checkpoint-sqlite>=3,<4",
+  "langchain-core>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+images = ["pillow>=10"]  # shrink large images before sending them to a vision model
+
+[project.scripts]
+lca = "lca.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["lca*"]
+
+[tool.setuptools.package-data]
+lca = ["agent/builtin_commands/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

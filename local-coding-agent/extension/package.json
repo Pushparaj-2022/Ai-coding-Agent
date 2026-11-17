@@ -1,0 +1,226 @@
+{
+  "name": "local-coding-agent",
+  "displayName": "Local Coding Agent",
+  "description": "Claude Code-style coding agent in VS Code, running on your local model (llama.cpp / Ollama).",
+  "version": "0.9.3",
+  "publisher": "redsand",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "llama.cpp",
+    "ollama",
+    "local"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lca",
+          "title": "Local Coding Agent",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "lca": [
+        {
+          "type": "webview",
+          "id": "lca.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "lca.focus",
+        "title": "Open Chat",
+        "category": "Local Coding Agent"
+      },
+      {
+        "command": "lca.newTask",
+        "title": "New Task",
+        "category": "Local Coding Agent",
+        "icon": "$(add)"
+      },
+      {
+        "command": "lca.stop",
+        "title": "Stop Current Task",
+        "category": "Local Coding Agent",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "lca.askAboutSelection",
+        "title": "Ask About Selection",
+        "category": "Local Coding Agent"
+      },
+      {
+        "command": "lca.restart",
+        "title": "Restart Agent",
+        "category": "Local Coding Agent"
+      },
+      {
+        "command": "lca.showLogs",
+        "title": "Show Agent Logs",
+        "category": "Local Coding Agent"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "lca.newTask",
+          "when": "view == lca.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "lca.stop",
+          "when": "view == lca.chat && lca.busy",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "lca.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "lca.focus",
+        "key": "ctrl+alt+l",
+        "mac": "cmd+alt+l"
+      },
+      {
+        "command": "lca.askAboutSelection",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Local Coding Agent",
+      "properties": {
+        "lca.executable": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `lca` executable. Empty = search `PATH`, the workspace `.venv`, and `~/.lca/bin`."
+        },
+        "lca.mode": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "auto-edit",
+            "full",
+            "plan",
+            "read-only"
+          ],
+          "default": "ask",
+          "enumDescriptions": [
+            "Review and approve every file change and command",
+            "Apply file changes automatically, ask before commands",
+            "Allow everything except risky commands (git push, deleting outside the project, ...)",
+            "Research only, then approve the agent's plan; it then continues in the mode you choose",
+            "Never change files"
+          ]
+        },
+        "lca.baseURL": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model server URL. Empty = the agent's config (default `http://127.0.0.1:8080/v1`)."
+        },
+        "lca.provider": {
+          "type": "string",
+          "enum": [
+            "",
+            "openai",
+            "ollama"
+          ],
+          "default": "",
+          "description": "Provider type. Empty = the agent's config."
+        },
+        "lca.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model name. Empty = first model the server reports."
+        },
+        "lca.allowRemote": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow a non-local model server (your code leaves this machine)."
+        },
+        "lca.openDiffOnApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the proposed change in a diff editor when approval is requested."
+        },
+        "lca.editorDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give the agent VS Code's problems (type errors, lint) for the files it edits, so it can fix them."
+        },
+        "lca.server.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start llama-server automatically when no model server is running at the (local) base URL."
+        },
+        "lca.server.executable": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to `llama-server`. Empty = search `PATH` and the winget install folder."
+        },
+        "lca.server.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `.gguf` model. Empty = the most recently downloaded model in the Hugging Face / llama.cpp cache."
+        },
+        "lca.server.gpuLayers": {
+          "type": "number",
+          "default": 99,
+          "description": "Layers to offload to the GPU (-ngl). Lower it if the model does not fit in VRAM; 0 = CPU only."
+        },
+        "lca.server.contextSize": {
+          "type": "number",
+          "default": 32768,
+          "description": "Total context size (-c), shared by the parallel slots."
+        },
+        "lca.server.parallel": {
+          "type": "number",
+          "default": 1,
+          "description": "Parallel slots (-np). The context size is split between slots, so 1 gives the agent the whole window."
+        },
+        "lca.server.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra llama-server arguments."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.15",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "5.6.3"
+  }
+}

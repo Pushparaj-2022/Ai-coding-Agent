@@ -81,6 +81,17 @@ log = logging.getLogger("lca.agent")
 
 NUDGE_EMPTY = "Your reply was empty. Continue the task with a tool call, or give your final answer."
 NUDGE_LENGTH = "Your reply was cut off by the output limit. Continue, and keep each tool call small."
+_TRUNCATED = "Error: your {name} call was cut off by the output token limit, so nothing was written. "
+TRUNCATED_CALL_DEFAULT = _TRUNCATED + "Send smaller arguments, and make only one large call per reply."
+TRUNCATED_CALL = {
+    "write_file": _TRUNCATED + (
+        "Write the file in parts, one write_file call per reply: first write_file with the first ~150 lines "
+        "(append=false), then write_file with append=true for each next ~150 lines, until the file is complete. "
+        "Split at line boundaries, and do not repeat lines that are already written."
+    ),
+    "edit_file": _TRUNCATED + "Split the change into several smaller edit_file calls, one per reply, each replacing a short span.",
+    "multi_edit": _TRUNCATED + "Send fewer, shorter edits per call, one call per reply.",
+}
 NUDGE_FOLLOW_THROUGH = (
     "You said what you would do next but made no tool call, so nothing happened. Make that tool call now. If you "
     "already have enough to answer, give your complete final answer instead."
@@ -811,7 +822,7 @@ class AgentLoop:
         tool = self.registry.get(call.name)
         if call.parse_error:
             if run.finish_reason == "length":
-                msg = f"Error: your {call.name} call was cut off by the output token limit. Make smaller calls."
+                msg = TRUNCATED_CALL.get(call.name, TRUNCATED_CALL_DEFAULT).format(name=call.name)
             else:
                 msg = f"Error: could not parse your {call.name} call: {call.parse_error}. Send the arguments as one valid JSON object."
             output = ToolOutput(content=msg, is_error=True)

@@ -159,6 +159,8 @@ def build_system_prompt(
 - Before changing an existing file, read it. Use edit_file for targeted changes (copy old_string exactly from
   read_file, without the line-number prefix), multi_edit for several changes to the same file at once, and
   write_file for new files or complete rewrites.
+- Your replies have a length limit. Write a file longer than ~150 lines in parts: write_file with the first part,
+  then write_file with append=true for each next part, one part per reply. Build big projects file by file.
 - Write complete, working code: no placeholders, no "rest of the code unchanged" comments. Keep changes focused.
 - If the user declines a change, follow their feedback instead of retrying the same change.
 {workflow}

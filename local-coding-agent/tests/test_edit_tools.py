@@ -48,6 +48,27 @@ def test_overwrite_requires_reading_first(wctx, project):
     assert not out.is_error and (project / "src/util.py").read_text() == "new\n"
 
 
+def test_large_file_written_in_parts_with_append(wctx, project):
+    assert not run(wctx, "write_file", path="big.py", content="a = 1\n").is_error
+    out = run(wctx, "write_file", path="big.py", content="b = 2\nc = 3\n", append=True)
+    assert not out.is_error and out.content.startswith("Appended to big.py (+2 -0 lines)")
+    out = run(wctx, "write_file", path="big.py", content="d = 4", append=True)
+    assert not out.is_error
+    assert (project / "big.py").read_text() == "a = 1\nb = 2\nc = 3\nd = 4"
+    out = run(wctx, "write_file", path="big.py", content="e = 5\n", append=True)  # no newline at the end: keep lines whole
+    assert (project / "big.py").read_text() == "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n"
+
+
+def test_append_to_unread_existing_file_is_refused(wctx, project):
+    out = run(wctx, "write_file", path="src/util.py", content="x = 1\n", append=True)
+    assert out.is_error and "Read src/util.py" in out.content
+
+
+def test_append_creates_missing_file(wctx, project):
+    out = run(wctx, "write_file", path="new.txt", content="hi\n", append=True)
+    assert not out.is_error and (project / "new.txt").read_text() == "hi\n"
+
+
 def test_refuses_when_user_changed_file_after_read(wctx, project):
     read(wctx, "src/util.py")
     (project / "src/util.py").write_text("user edit\n")

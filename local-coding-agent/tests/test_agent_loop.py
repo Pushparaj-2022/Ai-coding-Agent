@@ -91,6 +91,15 @@ def test_truncated_call_gets_specific_hint(project):
     assert "output token limit" in tool_messages(agent)[0].content
 
 
+def test_truncated_write_file_is_told_to_append_in_parts(project):
+    cut = ToolCall(id="x", name="write_file", raw_arguments='{"path": "big.py", "content": "x = 1\\n', parse_error="bad")
+    agent, _ = make_agent(project, [reply("", cut, finish="length"), reply("ok")])
+    agent.run("go")
+    msg = tool_messages(agent)[0].content
+    assert "output token limit" in msg and "append=true" in msg
+    assert not (project / "big.py").exists()
+
+
 def test_repeated_read_is_not_run_again(project):
     same = lambda: call("read_file", path="src/app.py")  # noqa: E731
     agent, _ = make_agent(project, [reply("", same()), reply("", same()), reply("fine")])

@@ -105,14 +105,20 @@ def _verify_unchanged(change: FileChange, path: Path) -> None:
 
 class WriteFileArgs(BaseModel):
     path: str = Field(description="File path relative to the workspace root")
-    content: str = Field(description="The complete new file content (no placeholders)")
+    content: str = Field(description="The complete new file content (no placeholders), or the next part of it when append=true")
+    append: bool = Field(
+        default=False,
+        description="Add content to the end of the file instead of replacing it. Use this to write a large file in "
+        "parts: the first part with append=false, each following part (whole lines, ~150 lines) with append=true.",
+    )
 
 
 class WriteFile(FileWriteTool):
     name = "write_file"
     description = (
         "Create a new file, or replace an existing file's entire content. Parent folders are created. "
-        "For small changes to an existing file prefer edit_file. Existing files must be read first."
+        "For small changes to an existing file prefer edit_file. Existing files must be read first. "
+        "Write files longer than ~150 lines in parts: the first part normally, then the rest with append=true."
     )
     Args = WriteFileArgs
 
@@ -128,6 +134,11 @@ class WriteFile(FileWriteTool):
             return FileChange(path=rel, action="create", before=None, after=after)
         _require_fresh(ctx, path, rel)
         before, newline = _read_text(path, rel)
+        if args.append:
+            if not after:
+                raise ToolError("append=true needs non-empty content.")
+            sep = "\n" if before and not before.endswith("\n") else ""  # parts are whole lines
+            after = before + sep + after
         if before == after:
             raise ToolError(f"{rel} already has exactly this content; nothing to change.")
         return FileChange(path=rel, action="modify", before=before, after=after, newline=newline)
@@ -136,7 +147,13 @@ class WriteFile(FileWriteTool):
         path = ctx.workspace.resolve(change.path)
         _verify_unchanged(change, path)
         _write(ctx, path, change.path, change.after or "", change.newline)
-        return _summary("Created" if change.action == "create" else "Rewrote", change)
+        if change.action == "create":
+            verb = "Created"
+        elif change.before and (change.after or "").startswith(change.before):
+            verb = "Appended to"
+        else:
+            verb = "Rewrote"
+        return _summary(verb, change)
 
 
 # ---------------------------------------------------------------- edit_file

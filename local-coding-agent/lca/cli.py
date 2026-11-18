@@ -1014,8 +1014,12 @@ def _with_editor_context(text: str, context: Any) -> str:
     parts = []
     sel = context.get("selection")
     file = context.get("file")
-    if isinstance(sel, dict) and sel.get("text") and file:
-        code = str(sel["text"])[:12000]
+    selected = str(sel.get("text") or "") if isinstance(sel, dict) else ""
+    if selected.strip() and file and " ".join(selected.split()) in " ".join(text.split()):
+        # the user copied the selection and pasted it into the message: say where it is from instead of sending it twice
+        parts.append(f"[The pasted code is lines {sel.get('start')}-{sel.get('end')} of {file}.]")
+    elif selected.strip() and file:
+        code = selected[:12000]
         parts.append(f"[The user selected lines {sel.get('start')}-{sel.get('end')} of {file} in the editor:]\n```\n{code}\n```")
     elif file:
         parts.append(f"[For reference only: the user has {file} open in the editor. Ignore this unless the request is about it.]")

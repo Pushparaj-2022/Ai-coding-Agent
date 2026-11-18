@@ -1104,11 +1104,18 @@
     renderImageTray();
   });
   input.addEventListener('paste', (e) => {
-    let took = false;
-    for (const item of e.clipboardData?.items || []) {
-      if (item.kind === 'file') took = addImageFile(item.getAsFile()) || took;
-    }
-    if (took) e.preventDefault();
+    const data = e.clipboardData;
+    if (!data) return;
+    // Text always pastes normally. Browsers, Office and many Windows apps put an image rendering next to the copied
+    // text; taking that image (or, with a non-vision model, blocking the paste) made text pasting look broken.
+    if (data.getData('text/plain')) return;
+    const files = [...(data.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    e.preventDefault();
+    files.forEach(addImageFile);
   });
   const composer = document.querySelector('.composer');
   composer.addEventListener('dragover', (e) => {
@@ -1481,9 +1488,25 @@
     }
     const copy = e.target.closest('.copy');
     if (copy) {
-      navigator.clipboard.writeText(copy.closest('.code').querySelector('code').textContent);
-      copy.textContent = 'Copied';
-      setTimeout(() => (copy.textContent = 'Copy'), 1200);
+      const text = copy.closest('.code').querySelector('code').textContent;
+      const done = (ok) => {
+        copy.textContent = ok ? 'Copied' : 'Copy failed';
+        setTimeout(() => (copy.textContent = 'Copy'), 1200);
+      };
+      // the async clipboard API can be refused inside a webview: fall back to a hidden textarea + execCommand
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        ta.remove();
+        done(ok);
+      };
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => done(true), fallback);
+      else fallback();
     }
   });
 

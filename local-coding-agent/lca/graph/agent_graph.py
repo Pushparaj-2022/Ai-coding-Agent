@@ -231,12 +231,27 @@ def command_family(command: str) -> str:
     return " ".join(head).lower()
 
 
-_CONTEXT_BLOCK = re.compile(r"\n\n\[(?:For reference only:|The user selected lines|File @|Folder @|@\S+ |Context added by)")
+_CONTEXT_BLOCK = re.compile(r"\n\n\[(?:For reference only:|The user selected lines|The pasted code is lines|File @|Folder @|@\S+ |Context added by)")
 
 
 def _task_text(message: str) -> str:
     """The user's own words, without the editor/mention context blocks appended to the message."""
     return _CONTEXT_BLOCK.split(message, 1)[0].strip()
+
+
+def _brief(task: str, limit: int = 1500) -> str:
+    """A long request (often pasted code or logs plus a short instruction) shortened from the middle: the instruction
+    is usually at the start or the end, so cutting the tail could drop exactly what was asked."""
+    if len(task) <= limit:
+        return task
+    half = limit // 2
+    return task[:half].rstrip() + "\n[... middle of the request omitted ...]\n" + task[-half:].lstrip()
+
+
+TASK_REMINDER = (
+    "\n\n[Reminder of the user's request. Work only toward it, by the most direct path; when it is done, give your "
+    "final answer instead of exploring further.]\n{task}"
+)
 
 
 def find_cycle(history: list[str], max_period: int = 4, repeats: int = 3) -> int:
@@ -515,8 +530,11 @@ class AgentLoop:
         updates: list[BaseMessage] = []
         ai: AIMessage | None = None
         system = self.system_prompt()
-        if run.iteration > 1 and run.task:  # deep into tool output, small models forget what was asked
-            system += f"\n\n# Current request (stay on it; take the most direct path)\n{run.task[:1500]}"
+        if run.iteration > 1 and run.task:
+            # Deep into tool output, small models forget what was asked. Restate it at the END of the context, where
+            # the model attends most, and only in this request (not stored), so the system prompt stays identical and
+            # the server's prompt cache keeps working.
+            msgs = self._with_task_reminder(msgs, _brief(run.task))
         for attempt in range(2):
             stream = StreamFilter(lambda t: self._emit(TextDelta(text=t)))
             try:
@@ -585,6 +603,23 @@ class AgentLoop:
             ai = from_lca([kept])[0]  # type: ignore[assignment]
         run.route = "tools"
         return {"messages": [*updates, ai]}
+
+    @staticmethod
+    def _with_task_reminder(msgs: list[BaseMessage], task: str) -> list[BaseMessage]:
+        """Copy of `msgs` whose last tool result (or nudge) ends with the user's request."""
+        if not msgs or not isinstance(msgs[-1].content, str):
+            return msgs
+        last = msgs[-1]
+        if isinstance(last, ToolMessage):
+            tail: BaseMessage = ToolMessage(
+                last.content + TASK_REMINDER.format(task=task), tool_call_id=last.tool_call_id, name=last.name,
+                status=last.status, id=last.id,
+            )
+        elif isinstance(last, HumanMessage) and not _text(last.content).startswith(VIEW_IMAGE_PREFIX):
+            tail = HumanMessage(last.content + TASK_REMINDER.format(task=task), id=last.id)
+        else:
+            return msgs
+        return [*msgs[:-1], tail]
 
     def _tools_node(self, state: AgentState) -> dict:
         run = self._run
@@ -990,7 +1025,7 @@ class AgentLoop:
         elif run.idle_turns == IDLE_WARN:
             note = IDLE_NOTE.format(n=run.idle_turns)
         elif run.readonly_streak and run.readonly_streak % FOCUS_EVERY == 0 and run.task:
-            note = FOCUS_NOTE.format(n=run.readonly_streak, task=run.task[:300].replace("\n", " "))
+            note = FOCUS_NOTE.format(n=run.readonly_streak, task=_brief(run.task, 300).replace("\n", " "))
         if note:
             last = out[-1]
             out[-1] = ToolMessage(_text(last.content) + note, tool_call_id=last.tool_call_id, name=last.name, status=last.status)
@@ -1258,7 +1293,7 @@ def transcript(messages: list[BaseMessage]) -> list[dict]:
                 continue
             items.append({
                 "role": "user", "id": m.id, "images": len(images_of(m)),
-                "text": re.split(r"\n\n\[(?:For reference only:|The user selected lines|File @|Folder @|@\S+ )", text.split(HOOK_CONTEXT)[0])[0],
+                "text": re.split(r"\n\n\[(?:For reference only:|The user selected lines|The pasted code is lines|File @|Folder @|@\S+ )", text.split(HOOK_CONTEXT)[0])[0],
             })
         elif isinstance(m, AIMessage):
             text = _text(m.content).strip()

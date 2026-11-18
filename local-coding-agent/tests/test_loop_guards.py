@@ -110,10 +110,32 @@ def test_focus_note_restates_the_task(project):
 def test_current_request_is_restated_after_the_first_turn(project):
     agent, provider = make(project, [reply("", call("read_file", path="src/app.py")), reply("done")])
     agent.run("explain add()")
-    first_system = provider.requests[0][0][0].content
-    second_system = provider.requests[1][0][0].content
-    assert "# Current request" not in first_system
-    assert "# Current request" in second_system and "explain add()" in second_system
+    first, second = provider.requests[0][0], provider.requests[1][0]
+    # restated at the end of the context, not in the system prompt (which stays identical for the prompt cache)
+    assert first[0].content == second[0].content
+    assert "Reminder of the user's request" not in first[-1].content
+    assert "Reminder of the user's request" in second[-1].content and "explain add()" in second[-1].content
+    # only sent, never stored in the conversation
+    assert not any("Reminder of the user's request" in c for c in tool_contents(agent))
+
+
+def test_long_request_keeps_its_instruction_when_shortened():
+    from lca.graph.agent_graph import _brief
+
+    task = "x = 1\n" * 1000 + "fix the bug in this code"
+    short = _brief(task)
+    assert len(short) < 1600 and short.endswith("fix the bug in this code")
+
+
+def test_pasted_selection_is_not_sent_twice():
+    from lca.cli import _with_editor_context
+
+    code = "def add(a, b):\n    return a - b"
+    ctx = {"file": "src/app.py", "selection": {"start": 1, "end": 2, "text": code}}
+    pasted = _with_editor_context(f"fix this:\n{code}", ctx)
+    assert pasted.count("return a - b") == 1 and "lines 1-2 of src/app.py" in pasted
+    not_pasted = _with_editor_context("fix the selected code", ctx)
+    assert "return a - b" in not_pasted
 
 
 def test_agent_internals_are_not_readable(project):
